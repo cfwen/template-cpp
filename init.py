@@ -3,12 +3,23 @@ import fileinput
 import sys
 import os
 import shutil
+import stat
+import errno
 
 
 def replace_in_files(fileToSearch, textToSearch, textToReplace):
     with fileinput.FileInput(files=fileToSearch, inplace=True, backup='.bak') as file:
         for line in file:
             print(line.replace(textToSearch, textToReplace), end='')
+
+
+def handleRemoveReadonly(func, path, exc):
+    excvalue = exc[1]
+    if func in (os.rmdir, os.remove, os.unlink) and excvalue.errno == errno.EACCES:
+        os.chmod(path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)  # 0777
+        func(path)
+    else:
+        raise
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -50,11 +61,15 @@ if __name__ == "__main__":
     f.close()
 
     if not rename:
-        if os.path.exists('.git'):
-            shutil.rmtree('.git')
         if os.path.exists('./bin/.keep'):
             os.remove('./bin/.keep')
         if os.path.exists('./data/.keep'):
             os.remove('./data/.keep')
         if os.path.exists('./third-party/.keep'):
             os.remove('./third-party/.keep')
+
+        if os.path.exists('.git'):
+            try:
+                shutil.rmtree('.git', onerror=handleRemoveReadonly)
+            except:
+                raise
